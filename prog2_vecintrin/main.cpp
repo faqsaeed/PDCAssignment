@@ -241,15 +241,41 @@ void clampedExpSerial(float* values, int* exponents, float* output, int N) {
 }
 
 void clampedExpVector(float* values, int* exponents, float* output, int N) {
+  __cs149_vec_float x, result;
+  __cs149_vec_int exponent, count;
+  __cs149_vec_float clampValue = _cs149_vset_float(9.999999f);
+  __cs149_vec_int zeroInt = _cs149_vset_int(0);
+  __cs149_vec_int oneInt = _cs149_vset_int(1);
 
-  //
-  // CS149 STUDENTS TODO: Implement your vectorized version of
-  // clampedExpSerial() here.
-  //
-  // Your solution should work for any value of
-  // N and VECTOR_WIDTH, not just when VECTOR_WIDTH divides N
-  //
-  
+  for (int i = 0; i < N; i += VECTOR_WIDTH) {
+    int lanes = std::min(VECTOR_WIDTH, N - i);
+    __cs149_mask valid = _cs149_init_ones(lanes);
+    __cs149_mask expPositive = _cs149_init_ones(0);
+
+    _cs149_vload_float(x, values + i, valid);
+    _cs149_vload_int(exponent, exponents + i, valid);
+
+    result = _cs149_vset_float(1.f);
+    count = _cs149_vset_int(0);
+
+    _cs149_vgt_int(expPositive, exponent, zeroInt, valid);
+    _cs149_vmove_float(result, x, expPositive);
+    _cs149_vsub_int(count, exponent, oneInt, expPositive);
+
+    while (true) {
+      __cs149_mask countPositive = _cs149_init_ones(0);
+      _cs149_vgt_int(countPositive, count, zeroInt, expPositive);
+      if (_cs149_cntbits(countPositive) == 0)
+        break;
+      _cs149_vmult_float(result, result, x, countPositive);
+      _cs149_vsub_int(count, count, oneInt, countPositive);
+    }
+
+    __cs149_mask overClamp = _cs149_init_ones(0);
+    _cs149_vgt_float(overClamp, result, clampValue, valid);
+    _cs149_vset_float(result, 9.999999f, overClamp);
+    _cs149_vstore_float(output + i, result, valid);
+  }
 }
 
 // returns the sum of all elements in values
@@ -266,15 +292,23 @@ float arraySumSerial(float* values, int N) {
 // You can assume N is a multiple of VECTOR_WIDTH
 // You can assume VECTOR_WIDTH is a power of 2
 float arraySumVector(float* values, int N) {
-  
-  //
-  // CS149 STUDENTS TODO: Implement your vectorized version of arraySumSerial here
-  //
-  
-  for (int i=0; i<N; i+=VECTOR_WIDTH) {
+  __cs149_mask all = _cs149_init_ones();
+  __cs149_vec_float sum = _cs149_vset_float(0.f);
+  __cs149_vec_float x;
 
+  for (int i = 0; i < N; i += VECTOR_WIDTH) {
+    _cs149_vload_float(x, values + i, all);
+    _cs149_vadd_float(sum, sum, x, all);
   }
 
-  return 0.0;
+  __cs149_vec_float tmp;
+  for (int width = VECTOR_WIDTH; width > 1; width /= 2) {
+    _cs149_hadd_float(tmp, sum);
+    _cs149_interleave_float(sum, tmp);
+  }
+
+  float tmpOut[VECTOR_WIDTH];
+  _cs149_vstore_float(tmpOut, sum, all);
+  return tmpOut[0];
 }
 
